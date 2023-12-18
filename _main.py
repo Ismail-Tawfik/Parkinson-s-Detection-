@@ -35,8 +35,10 @@ def main():
         for feature, value in features.items():
             logging.info(f"{feature}: {value}")
 
-        loaded_bc_model, loaded_scaler = load_models()
-        predictions = make_prediction(np.array([list(features.values())]), loaded_bc_model, loaded_scaler)
+        loaded_models = load_models()
+
+        for model_and_scaler in loaded_models:
+            predictions = make_prediction(np.array([list(features.values())]), model_and_scaler)
 
         logging.info("\nPrediction:")
         logging.info(f"Prediction: {predictions}")

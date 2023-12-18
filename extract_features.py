@@ -13,6 +13,59 @@ from concurrent.futures import ProcessPoolExecutor
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+# def calculate_pitch_features(pitches, sr):
+#     if np.any(pitches > 0):
+#         pitches = np.mean(pitches, axis=0)
+#         epsilon = 1e-10
+#         fo = np.mean(librosa.hz_to_midi(pitches[pitches > 0] + epsilon))
+#         fhi = np.max(librosa.hz_to_midi(pitches + epsilon))
+#         flo = np.min(librosa.hz_to_midi(pitches + epsilon))
+#     else:
+#         fo, fhi, flo = 0, 0, 0
+
+#     return fo, fhi, flo
+def calculate_pitch_features(pitches, sr):
+    if np.any(pitches > 0):
+        pitches = pitches[pitches > 0]  # Exclude negative pitch values
+        fo = np.mean(librosa.hz_to_midi(pitches))
+        fhi = np.max(librosa.hz_to_midi(pitches))
+        flo = np.min(librosa.hz_to_midi(pitches))
+    else:
+        fo, fhi, flo = 0, 0, 0
+
+    return fo, fhi, flo
+
+
+# Create a function for each attribute calculation
+
+def calculate_jitter(pitch_periods):
+    jitter_values = np.abs(np.diff(pitch_periods))
+    jitter_percentage = np.mean(jitter_values) * 100
+    jitter_absolute = np.mean(jitter_values)
+    rap = np.mean(np.abs(np.diff(pitch_periods, 2)))
+    ppq = np.mean(np.abs(np.diff(pitch_periods, 3)))
+    ddp = rap * 3
+    return jitter_percentage, jitter_absolute, rap, ppq, ddp
+
+def calculate_shimmer(amplitude_envelope):
+    peaks, _ = find_peaks(amplitude_envelope)
+    shimmer = np.mean(amplitude_envelope[peaks])
+    shimmer_dB = max(0, 20 * np.log10(np.abs(shimmer)))  # Ensure non-negative value
+    apq3 = np.mean(np.abs(np.diff(amplitude_envelope[peaks], 2)))
+    apq5 = np.mean(np.abs(np.diff(amplitude_envelope[peaks], 4)))
+    apq = np.mean(np.abs(np.diff(amplitude_envelope[peaks])))
+    dda = np.mean(np.abs(np.diff(peaks)))
+    return shimmer, shimmer_dB, apq3, apq5, apq, dda
+
+
+
+def calculate_nhr_hnr(percussive, harmonic):
+    nhr = np.mean(percussive / harmonic)
+    hnr = np.mean(harmonic / percussive)
+    return nhr, hnr
+
+
 def calculate_rpde(signal):
     try:
         # Assuming 'signal' is a 1D array of audio data
@@ -31,6 +84,8 @@ def calculate_rpde(signal):
 #     except Exception as e:
 #         print(f"Error calculating D2: {e}")
 #         return 0  # Set default value in case of an error
+    
+
 def calculate_d2_parallel(signal, emb_dim=10):
     try:
         # Calculate D2 using nolds library
@@ -69,12 +124,16 @@ def calculate_spread1(audio_signal, fs):
 
     # Handle the case when there are no valid pitch values
     if np.any(pitches > 0):
-        pitches = np.mean(pitches, axis=0)
-        epsilon = 1e-10  # Small epsilon to avoid division by zero
-        midi_pitches = librosa.hz_to_midi(pitches[pitches > 0] + epsilon)
+        # Extract only positive pitch values
+        positive_pitches = pitches[pitches > 0]
         
         # Calculate spread1 as the standard deviation of MIDI pitch values
-        spread1_value = np.std(midi_pitches)
+        if np.any(positive_pitches):
+            epsilon = 1e-10  # Small epsilon to avoid division by zero
+            midi_pitches = librosa.hz_to_midi(positive_pitches + epsilon)
+            spread1_value = np.std(midi_pitches)
+        else:
+            spread1_value = 0
     else:
         # Set default value if there are no valid pitch values
         spread1_value = 0
@@ -94,6 +153,8 @@ def calculate_spread2(audio_signal):
 
     return spread2_value
 
+from scipy.stats import entropy
+
 def calculate_ppe(audio_signal, fs):
     # Harmonic-Percussive source separation
     harmonic = librosa.effects.harmonic(audio_signal)
@@ -107,9 +168,10 @@ def calculate_ppe(audio_signal, fs):
     # Filter out invalid pitch periods
     valid_pitch_periods = pitch_periods[pitch_periods > 0]
 
-    # Calculate PPE using entropy
+    # Calculate PPE using histogram and entropy
     if len(valid_pitch_periods) > 0:
-        ppe_value = entropy(valid_pitch_periods)
+        hist, bin_edges = np.histogram(valid_pitch_periods, bins='auto', density=True)
+        ppe_value = entropy(hist)
     else:
         ppe_value = 0  # Set default value if there are no valid pitch periods
 
@@ -128,104 +190,78 @@ def extract_audio_features(audio_file_path):
     # Harmonic-Percussive source separation
     harmonic = librosa.effects.harmonic(audio_signal)
 
-    # Pitch-related features
-    pitches, magnitudes = librosa.core.piptrack(y=harmonic, sr=sr)
+    # Calculate pitch-related features
+    pitches, _ = librosa.core.piptrack(y=harmonic, sr=sr)
+    fo, fhi, flo = calculate_pitch_features(pitches, sr)
 
-    # Handle the case when there are no valid pitch values
-    if np.any(pitches > 0):
-        pitches = np.mean(pitches, axis=0)
-        epsilon = 1e-10  # Small epsilon to avoid division by zero
-        features['MDVP:Fo(Hz)'] = np.mean(librosa.hz_to_midi(pitches[pitches > 0] + epsilon))
-        features['MDVP:Fhi(Hz)'] = np.max(librosa.hz_to_midi(pitches + epsilon))
-        features['MDVP:Flo(Hz)'] = np.min(librosa.hz_to_midi(pitches + epsilon))
-    else:
-        # Set default values if there are no valid pitch values
-        features['MDVP:Fo(Hz)'] = 0
-        features['MDVP:Fhi(Hz)'] = 0
-        features['MDVP:Flo(Hz)'] = 0
+    features['MDVP:Fo(Hz)'] = fo
+    features['MDVP:Fhi(Hz)'] = fhi
+    features['MDVP:Flo(Hz)'] = flo
 
-    # Jitter-related features
     pitch_periods = 1 / pitches[pitches > 0]
-    jitter_values = np.abs(np.diff(pitch_periods))
-    features['MDVP:Jitter(%)'] = np.mean(jitter_values) * 100  # Convert to percentage
-    features['MDVP:Jitter(Abs)'] = np.mean(jitter_values)
-    features['MDVP:RAP'] = np.mean(np.abs(np.diff(pitch_periods, 2)))
-    features['MDVP:PPQ'] = np.mean(np.abs(np.diff(pitch_periods, 3)))
-    features['Jitter:DDP'] = features['MDVP:RAP'] * 3  # Assuming DDP is 3 times RAP
+    jitter_percentage, jitter_absolute, rap, ppq, ddp = calculate_jitter(pitch_periods)
+    features['MDVP:Jitter(%)'] = jitter_percentage
+    features['MDVP:Jitter(Abs)'] = jitter_absolute
+    features['MDVP:RAP'] = rap
+    features['MDVP:PPQ'] = ppq
+    features['Jitter:DDP'] = ddp
 
-    # Shimmer-related features (using amplitude-based shimmer)
     amplitude_envelope = np.abs(librosa.effects.preemphasis(harmonic))
-    peaks, _ = find_peaks(amplitude_envelope)
-    features['MDVP:Shimmer'] = np.mean(amplitude_envelope[peaks])
-    features['MDVP:Shimmer(dB)'] = 20 * np.log10(features['MDVP:Shimmer'])  # Convert to dB
+    shimmer, shimmer_dB, apq3, apq5, apq, dda = calculate_shimmer(amplitude_envelope)
+    features['MDVP:Shimmer'] = shimmer
+    features['MDVP:Shimmer(dB)'] = shimmer_dB
+    features['Shimmer:APQ3'] = apq3
+    features['Shimmer:APQ5'] = apq5
+    features['MDVP:APQ'] = apq
+    features['Shimmer:DDA'] = dda
 
-    # Shimmer:APQ3 and Shimmer:APQ5
-    features['Shimmer:APQ3'] = np.mean(np.abs(np.diff(amplitude_envelope[peaks], 2)))
-    features['Shimmer:APQ5'] = np.mean(np.abs(np.diff(amplitude_envelope[peaks], 4)))
-
-    # MDVP:APQ
-    features['MDVP:APQ'] = np.mean(np.abs(np.diff(amplitude_envelope[peaks])))
-
-    # Shimmer:DDA
-    features['Shimmer:DDA'] = np.mean(np.abs(np.diff(peaks)))
-
-    # NHR (Noise-to-Harmonics Ratio)
     percussive = librosa.effects.percussive(audio_signal)
-    features['NHR'] = np.mean(percussive / harmonic)
-
-    # HNR (Harmonics-to-Noise Ratio)
-    features['HNR'] = np.mean(harmonic / percussive)
+    nhr, hnr = calculate_nhr_hnr(percussive, harmonic)
+    features['NHR'] = nhr
+    features['HNR'] = hnr
 
     # RPDE (Recurrence Period Density Entropy)
     try:
-        print("RPDE")
         features['RPDE'] = calculate_rpde(audio_signal)
     except Exception as e:
         print(f"Error calculating RPDE: {e}")
-        features['RPDE'] = 0  # Set default value in case of an error
+        features['RPDE'] = 0
 
     # D2 (Correlation dimension)
-    # try:
-    #     print(4444444)
-    #     features['D2'] = calculate_d2(audio_signal)
-    # except Exception as e:
-    #     print(f"Error calculating D2: {e}")
-    #     features['D2'] = 0  # Set default value in case of an error
-    # D2 (Correlation dimension)
     try:
-        print("Calculating D2 in parallel...")
         features['D2'] = calculate_d2_parallelized(audio_signal)
     except Exception as e:
         print(f"Error calculating D2: {e}")
-        features['D2'] = 0  # Set default value in case of an error
+        features['D2'] = 0
+
     # DFA (Detrended Fluctuation Analysis)
     try:
-        print("33333")
         features['DFA'] = calculate_dfa(audio_signal)
     except Exception as e:
         print(f"Error calculating DFA: {e}")
-        features['DFA'] = 0  # Set default value in case of an error
+        features['DFA'] = 0
 
     # Calculate spread1
     try:
         features['spread1'] = calculate_spread1(audio_signal, sr)
     except Exception as e:
         print(f"Error calculating spread1: {e}")
-        features['spread1'] = 0  # Set default value in case of an error
+        features['spread1'] = 0
+
     # Calculate spread2
     try:
         features['spread2'] = calculate_spread2(audio_signal)
     except Exception as e:
         print(f"Error calculating spread2: {e}")
-        features['spread2'] = 0  # Set default value in case of an error
+        features['spread2'] = 0
+
     # Calculate PPE
     try:
         features['PPE'] = calculate_ppe(audio_signal, sr)
     except Exception as e:
         print(f"Error calculating PPE: {e}")
-        features['PPE'] = 0  # Set default value in case of an error
-    # Add the 'status' feature
-    # features['status'] = 0  # Set to 0 for no Parkinson's
+        features['PPE'] = 0
+
 
     return features
 
@@ -239,7 +275,5 @@ if __name__ == "__main__":
         logging.info("\nExtracted Features:")
         for feature, value in features.items():
             logging.info(f"{feature}: {value}")
-
-
     except Exception as e:
         logging.error(f"An error occurred: {e}")
