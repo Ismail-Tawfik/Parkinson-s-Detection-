@@ -192,13 +192,14 @@ def extract_audio_features(audio_file_path):
     #     print(f"Error calculating D2: {e}")
     #     features['D2'] = 0  # Set default value in case of an error
     # D2 (Correlation dimension)
-    try:
-        print("Calculating D2 in parallel...")
-        features['D2'] = calculate_d2_parallelized(audio_signal)
-    except Exception as e:
-        print(f"Error calculating D2: {e}")
-        features['D2'] = 0  # Set default value in case of an error
-    # DFA (Detrended Fluctuation Analysis)
+    # try:
+    #     print("Calculating D2 in parallel...")
+    #     features['D2'] = calculate_d2_parallelized(audio_signal)
+    # except Exception as e:
+    #     print(f"Error calculating D2: {e}")
+    #     features['D2'] = 0  # Set default value in case of an error
+    # # DFA (Detrended Fluctuation Analysis)
+    features['D2'] = 0  # Set default value in case of an error
     try:
         print("33333")
         features['DFA'] = calculate_dfa(audio_signal)
@@ -213,11 +214,12 @@ def extract_audio_features(audio_file_path):
         print(f"Error calculating spread1: {e}")
         features['spread1'] = 0  # Set default value in case of an error
     # Calculate spread2
-    try:
-        features['spread2'] = calculate_spread2(audio_signal)
-    except Exception as e:
-        print(f"Error calculating spread2: {e}")
-        features['spread2'] = 0  # Set default value in case of an error
+    # try:
+    #     features['spread2'] = calculate_spread2(audio_signal)
+    # except Exception as e:
+    #     print(f"Error calculating spread2: {e}")
+    #     features['spread2'] = 0  # Set default value in case of an error
+    features['spread2'] = 0 
     # Calculate PPE
     try:
         features['PPE'] = calculate_ppe(audio_signal, sr)

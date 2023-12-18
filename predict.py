@@ -25,8 +25,6 @@ def make_prediction(new_data, loaded_bc_model, loaded_scaler):
 # # Example usage:
 if __name__ == "__main__":
     loaded_bc_model, loaded_scaler = load_models()
-
-    new_data_example = np.array([[148.46200,161.07800,141.99800,0.00397,0.00003,0.00202,0.00235,0.00605,0.01831,0.16300,0.00950,0.01103,0.01559,0.02849,0.00639,22.86600,0.408598,0.768845,-5.704053,0.216204,2.679185,0.197710]])
-
+    new_data_example = np.array([[187.73300,202.32400,173.01500,0.00316,0.00002,0.00168,0.00182,0.00504,0.01663,0.15100,0.00829,0.01003,0.01366,0.02488,0.00265,26.31000,0.396793,0.758324,-6.006647,0.266892,2.382544,0.160691]])
     predictions_example = make_prediction(new_data_example, loaded_bc_model, loaded_scaler)
     print("Predictions:", predictions_example)

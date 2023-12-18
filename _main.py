@@ -37,7 +37,7 @@ def main():
 
         loaded_bc_model, loaded_scaler = load_models()
         predictions = make_prediction(np.array([list(features.values())]), loaded_bc_model, loaded_scaler)
-
+        print(np.array([list(features.values())]))
         logging.info("\nPrediction:")
         logging.info(f"Prediction: {predictions}")
 
