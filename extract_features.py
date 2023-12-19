@@ -177,6 +177,38 @@ def calculate_ppe(audio_signal, fs):
 
     return ppe_value
 
+
+
+# Function to calculate mean and standard deviation for each feature
+def calculate_mean_std(training_data):
+    mean_values = {}
+    std_values = {}
+
+    # Extract feature values from training data
+    feature_values = {feature: [sample[feature] for sample in training_data] for feature in training_data[0].keys()}
+
+    # Calculate mean and standard deviation for each feature
+    for feature, values in feature_values.items():
+        mean_values[feature] = np.mean(values)
+        std_values[feature] = np.std(values)
+
+    return mean_values, std_values
+
+
+
+# Function to standardize features
+def standardize_features(features, mean_values, std_values):
+    for feature, value in features.items():
+        if std_values[feature] != 0:
+            if isinstance(value, (int, float, np.float64)):
+                features[feature] = (value - mean_values[feature]) / std_values[feature]
+            elif isinstance(value, np.ndarray):
+                features[feature] = (value - mean_values[feature]) / std_values[feature]
+            else:
+                print(f"Warning: Unsupported data type for feature {feature}")
+        else:
+            features[feature] = 0  # Handle the case where the standard deviation is zero
+
 def extract_audio_features(audio_file_path):
     if not audio_file_path.lower().endswith(('.wav', '.mp3', '.ogg', '.flac', '.wma')):
         raise ValueError("Invalid file format. Please select a supported audio file.")
@@ -265,15 +297,30 @@ def extract_audio_features(audio_file_path):
 
     return features
 
+def calculate_mean_std(features):
+    all_values = np.array(list(features.values()))
+    mean_values = np.mean(all_values, axis=0)
+    std_values = np.std(all_values, axis=0)
+    return mean_values, std_values
+
 if __name__ == "__main__":
     try:
         # Example usage
         audio_file_path = "recorded_audio.wav"
         features = extract_audio_features(audio_file_path)
 
-        # Display the extracted features
-        logging.info("\nExtracted Features:")
+        # Calculate mean and std values
+        mean_values, std_values = calculate_mean_std(features)
+
+        # Standardize features
+        standardized_features = {}
         for feature, value in features.items():
+            standardized_features[feature] = (value - mean_values) / std_values
+
+        # Display the standardized features
+        logging.info("\nStandardized Features:")
+        for feature, value in standardized_features.items():
             logging.info(f"{feature}: {value}")
+
     except Exception as e:
         logging.error(f"An error occurred: {e}")
